@@ -9,10 +9,8 @@ import {
 } from "react-router-dom";
 import axios from "axios";
 
-// ← ДОБАВЛЕНО ДЛЯ УСТРАНЕНИЯ 403: константы
 const KRATOS_PUBLIC = "http://localhost:4433";
 
-// ← ДОБАВЛЕНО: универсальная функция получения CSRF-токена из любого flow
 const getCsrfToken = flow => {
   if (!flow?.ui?.nodes) return "";
   const node = flow.ui.nodes.find(n => n.attributes?.name === "csrf_token");
@@ -92,7 +90,6 @@ function App() {
       }
     }
   };
-  // ← ИСПРАВЛЕНО: обработчик логина (точно такой же принцип)
   const handleLogin = async values => {
     try {
       const { data: loginFlow } = await axios.get(
@@ -129,7 +126,7 @@ function App() {
     }
   };
 
-  // ← ДОБАВЛЕНО: VK OIDC логин (уже работало, но для полноты)
+  // VK OIDC логин
   const handleVKLogin = () => {
     window.location.href = `${KRATOS_PUBLIC}/self-service/login/browser?provider=vk`;
   };
@@ -189,7 +186,6 @@ function App() {
         />
 
         {/* Регистрация */}
-        {/* Регистрация — полностью соответствует твоей identity.schema.phone.json */}
         <Route
           path="/registration"
           element={
@@ -227,6 +223,18 @@ function App() {
                 }}
               >
                 <input
+                  name="firstName"
+                  placeholder="Имя"
+                  required
+                  style={{ marginBottom: "1rem" }}
+                />
+                <input
+                  name="lastName"
+                  placeholder="Фамилия"
+                  required
+                  style={{ marginBottom: "1rem" }}
+                />
+                <input
                   name="phone"
                   type="tel"
                   placeholder="+7 (999) 123-45-67"
@@ -234,21 +242,6 @@ function App() {
                   required
                   style={{ marginBottom: "1rem" }}
                 />
-
-                <input
-                  name="firstName"
-                  placeholder="Имя"
-                  required
-                  style={{ marginBottom: "1rem" }}
-                />
-
-                <input
-                  name="lastName"
-                  placeholder="Фамилия"
-                  required
-                  style={{ marginBottom: "1rem" }}
-                />
-
                 <input
                   name="password"
                   type="password"
@@ -257,7 +250,6 @@ function App() {
                   required
                   style={{ marginBottom: "1rem" }}
                 />
-
                 <label
                   style={{
                     display: "flex",
