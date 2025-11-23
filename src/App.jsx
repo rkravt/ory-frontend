@@ -82,7 +82,7 @@ function App() {
       );
 
       await checkSession();
-      navigate("/dashboard");
+      navigate("/verify-sms");
     } catch (error) {
       console.error("Регистрация не удалась:", error.response?.data || error);
       if (error.response?.data) {
@@ -289,6 +289,157 @@ function App() {
             </div>
           }
         />
+
+        {/* Подтверждение SMS-кодом после регистрации */}
+        <Route
+          path="/verify-sms"
+          element={
+            <div>
+              <h1>Подтвердите номер</h1>
+              <p
+                style={{
+                  color: "#475569",
+                  margin: "1rem 0 2rem",
+                  textAlign: "center",
+                }}
+              >
+                Мы отправили 6-значный код на номер
+                <br />
+                <strong>
+                  {session?.identity?.traits?.phone || "ваш телефон"}
+                </strong>
+              </p>
+
+              {flow?.ui?.messages?.map((m, i) => (
+                <p
+                  key={i}
+                  style={{
+                    color: "#dc2626",
+                    background: "#fef2f2",
+                    padding: "1rem",
+                    borderRadius: "8px",
+                    margin: "1rem 0",
+                  }}
+                >
+                  {m.text}
+                </p>
+              ))}
+
+              <form
+                onSubmit={async e => {
+                  e.preventDefault();
+                  const code = e.target.code.value.trim();
+
+                  try {
+                    // Используем текущий flow, если он verification, или создаём новый
+                    let verificationFlow =
+                      flow?.type === "verification" ? flow : null;
+
+                    if (!verificationFlow) {
+                      const { data } = await axios.get(
+                        `${KRATOS_PUBLIC}/self-service/verification/browser`,
+                        { withCredentials: true }
+                      );
+                      verificationFlow = data;
+                      setFlow(data);
+                    }
+
+                    const csrfToken = getCsrfToken(verificationFlow);
+
+                    await axios.post(
+                      `${KRATOS_PUBLIC}/self-service/verification?flow=${verificationFlow.id}`,
+                      {
+                        method: "code",
+                        csrf_token: csrfToken,
+                        code: code,
+                      },
+                      {
+                        withCredentials: true,
+                        headers: {
+                          "Content-Type": "application/json",
+                          "X-CSRF-Token": csrfToken,
+                        },
+                      }
+                    );
+
+                    await checkSession();
+                    navigate("/dashboard");
+                  } catch (error) {
+                    if (error.response?.data) {
+                      setFlow(error.response.data);
+                    }
+                  }
+                }}
+              >
+                <input
+                  name="code"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  placeholder="000000"
+                  required
+                  autoFocus
+                  style={{
+                    width: "100%",
+                    padding: "1.2rem",
+                    fontSize: "2rem",
+                    textAlign: "center",
+                    letterSpacing: "0.8rem",
+                    fontWeight: "bold",
+                    border: "2px solid #e2e8f0",
+                    borderRadius: "12px",
+                    marginBottom: "1.5rem",
+                    fontFamily: "monospace",
+                  }}
+                  onInput={e => {
+                    e.target.value = e.target.value
+                      .replace(/\D/g, "")
+                      .slice(0, 6);
+                  }}
+                />
+
+                <button
+                  type="submit"
+                  style={{ background: "#10b981", color: "white" }}
+                >
+                  Подтвердить
+                </button>
+              </form>
+
+              <p
+                style={{
+                  marginTop: "1.5rem",
+                  fontSize: "0.95rem",
+                  color: "#64748b",
+                }}
+              >
+                Не пришёл код?{" "}
+                <a
+                  href="#"
+                  onClick={async e => {
+                    e.preventDefault();
+                    try {
+                      const { data } = await axios.post(
+                        `${KRATOS_PUBLIC}/self-service/verification/api`,
+                        { method: "code" },
+                        { withCredentials: true }
+                      );
+                      setFlow(data);
+                      alert("Новый код отправлен!");
+                    } catch {
+                      alert("Не удалось отправить код");
+                    }
+                  }}
+                  style={{ color: "#3b82f6" }}
+                >
+                  Отправить ещё раз
+                </a>
+              </p>
+            </div>
+          }
+        />
+
         {/* Защищённый дашборд */}
         <Route
           path="/dashboard"
