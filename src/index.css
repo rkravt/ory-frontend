@@ -207,3 +207,22 @@ form:has(input[name="code"]) button[type="submit"] {
 form:has(input[name="code"]) button[type="submit"]:hover {
   background: #059669 !important;
 }
+
+/* Поле ввода SMS-кода */
+input[placeholder="000000"] {
+  font-size: 2rem !important;
+  letter-spacing: 0.8rem;
+  text-align: center;
+  font-weight: bold;
+  font-family: "Courier New", monospace;
+  background: #f8fafc;
+  padding-left: 0.8rem !important;
+}
+
+/* Зелёная кнопка подтверждения */
+form:has(input[name="code"]) button[type="submit"] {
+  background: #10b981 !important;
+}
+form:has(input[name="code"]) button[type="submit"]:hover {
+  background: #059669 !important;
+}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -18,44 +18,40 @@ const getCsrfToken = flow => {
 };
 
 function App() {
-  const [session, setSession] = useState(null);
-  const [flow, setFlow] = useState(null); // текущий login/registration/verification flow
+  const [session, setSession] = useState(null); // null = неизвестно, объект = сессия, false = нет сессии
+  const [flow, setFlow] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Проверка сессии при загрузке
   const checkSession = async () => {
     try {
       const { data } = await axios.get(`${KRATOS_PUBLIC}/sessions/whoami`, {
         withCredentials: true,
       });
       setSession(data);
-      if (
-        data.active &&
-        (location.pathname === "/" || location.pathname === "/login")
-      ) {
-        navigate("/dashboard");
-      }
     } catch (err) {
       setSession(null);
     }
   };
 
+  // Вариант 3: проверяем сессию только если она неизвестна и только при смене роута
   useEffect(() => {
-    checkSession();
-  }, []);
+    if (session === null) {
+      checkSession();
+    }
+  }, [location.pathname, session]);
 
   const handleRegister = async values => {
     try {
-      const { data: flow } = await axios.get(
+      const { data: regFlow } = await axios.get(
         `${KRATOS_PUBLIC}/self-service/registration/browser`,
         { withCredentials: true }
       );
 
-      const csrfToken = getCsrfToken(flow);
+      const csrfToken = getCsrfToken(regFlow);
 
       await axios.post(
-        `${KRATOS_PUBLIC}/self-service/registration?flow=${flow.id}`,
+        `${KRATOS_PUBLIC}/self-service/registration?flow=${regFlow.id}`,
         {
           method: "password",
           csrf_token: csrfToken,
@@ -63,12 +59,8 @@ function App() {
             phone: values.phone.startsWith("+")
               ? values.phone
               : `+7${values.phone.replace(/\D/g, "").slice(1)}`,
-            name: {
-              first: values.firstName,
-              last: values.lastName,
-            },
+            name: { first: values.firstName, last: values.lastName },
             tos_accepted: values.tos_accepted,
-            // dept_id и position_id можно не отправлять — они не required
           },
           password: values.password,
         },
@@ -82,14 +74,12 @@ function App() {
       );
 
       await checkSession();
-      navigate("/verify-sms");
+      navigate("/verify-sms"); // ← теперь сюда после регистрации
     } catch (error) {
-      console.error("Регистрация не удалась:", error.response?.data || error);
-      if (error.response?.data) {
-        setFlow(error.response.data);
-      }
+      if (error.response?.data) setFlow(error.response.data);
     }
   };
+
   const handleLogin = async values => {
     try {
       const { data: loginFlow } = await axios.get(
@@ -104,14 +94,14 @@ function App() {
         {
           method: "password",
           csrf_token: csrfToken,
-          identifier: values.phone, // логин по телефону
+          identifier: values.phone,
           password: values.password,
         },
         {
           withCredentials: true,
           headers: {
             "Content-Type": "application/json",
-            "X-CSRF-Token": csrfToken, // ← обязательно
+            "X-CSRF-Token": csrfToken,
           },
         }
       );
@@ -119,19 +109,14 @@ function App() {
       await checkSession();
       navigate("/dashboard");
     } catch (error) {
-      console.error("Login error:", error);
-      if (error.response?.data) {
-        setFlow(error.response.data);
-      }
+      if (error.response?.data) setFlow(error.response.data);
     }
   };
 
-  // VK OIDC логин
   const handleVKLogin = () => {
     window.location.href = `${KRATOS_PUBLIC}/self-service/login/browser?provider=vk`;
   };
 
-  // Логаут
   const handleLogout = async () => {
     try {
       const { data } = await axios.get(
@@ -141,7 +126,7 @@ function App() {
         }
       );
       window.location.href = data.logout_url;
-    } catch (err) {
+    } catch {
       window.location.href = "/";
     }
   };
@@ -149,7 +134,7 @@ function App() {
   return (
     <div className="App">
       <Routes>
-        {/* Главная / логин */}
+        {/* ЛОГИН */}
         <Route
           path="/"
           element={
@@ -185,14 +170,12 @@ function App() {
           }
         />
 
-        {/* Регистрация */}
+        {/* РЕГИСТРАЦИЯ */}
         <Route
           path="/registration"
           element={
             <div>
               <h1>Регистрация</h1>
-
-              {/* Ошибки от Kratos */}
               {flow?.ui?.messages?.map((msg, i) => (
                 <p
                   key={i}
@@ -207,48 +190,32 @@ function App() {
                   {msg.text}
                 </p>
               ))}
-
               <form
-                onSubmit={async e => {
+                onSubmit={e => {
                   e.preventDefault();
-                  const form = e.target;
-
-                  await handleRegister({
-                    phone: form.phone.value.trim(),
-                    firstName: form.firstName.value.trim(),
-                    lastName: form.lastName.value.trim(),
-                    password: form.password.value,
-                    tos_accepted: form.tos.checked,
+                  handleRegister({
+                    phone: e.target.phone.value.trim(),
+                    firstName: e.target.firstName.value.trim(),
+                    lastName: e.target.lastName.value.trim(),
+                    password: e.target.password.value,
+                    tos_accepted: e.target.tos.checked,
                   });
                 }}
               >
-                <input
-                  name="firstName"
-                  placeholder="Имя"
-                  required
-                  style={{ marginBottom: "1rem" }}
-                />
-                <input
-                  name="lastName"
-                  placeholder="Фамилия"
-                  required
-                  style={{ marginBottom: "1rem" }}
-                />
+                <input name="firstName" placeholder="Имя" required />
+                <input name="lastName" placeholder="Фамилия" required />
                 <input
                   name="phone"
                   type="tel"
                   placeholder="+7 (999) 123-45-67"
-                  pattern="\+?[0-9\s\-\(\)]{11,20}"
                   required
-                  style={{ marginBottom: "1rem" }}
                 />
                 <input
                   name="password"
                   type="password"
-                  placeholder="Пароль (минимум 6 символов)"
+                  placeholder="Пароль (мин. 6 символов)"
                   minLength={6}
                   required
-                  style={{ marginBottom: "1rem" }}
                 />
                 <label
                   style={{
@@ -271,26 +238,15 @@ function App() {
                     style={{ marginLeft: "4px", color: "#3b82f6" }}
                   >
                     Пользовательское соглашение
-                  </a>{" "}
-                  и даю согласие на обработку данных
+                  </a>
                 </label>
-
-                <button
-                  type="submit"
-                  style={{ background: "#3b82f6", color: "white" }}
-                >
-                  Зарегистрироваться
-                </button>
+                <button type="submit">Зарегистрироваться</button>
               </form>
-
-              <p style={{ marginTop: "1.5rem" }}>
-                Уже есть аккаунт? <a href="/">Войти</a>
-              </p>
             </div>
           }
         />
 
-        {/* Подтверждение SMS-кодом после регистрации */}
+        {/* ПОДТВЕРЖДЕНИЕ SMS */}
         <Route
           path="/verify-sms"
           element={
@@ -303,13 +259,10 @@ function App() {
                   textAlign: "center",
                 }}
               >
-                Мы отправили 6-значный код на номер
+                Мы отправили 6-значный код на
                 <br />
-                <strong>
-                  {session?.identity?.traits?.phone || "ваш телефон"}
-                </strong>
+                <strong>{session?.identity?.traits?.phone}</strong>
               </p>
-
               {flow?.ui?.messages?.map((m, i) => (
                 <p
                   key={i}
@@ -324,17 +277,13 @@ function App() {
                   {m.text}
                 </p>
               ))}
-
               <form
                 onSubmit={async e => {
                   e.preventDefault();
                   const code = e.target.code.value.trim();
-
                   try {
-                    // Используем текущий flow, если он verification, или создаём новый
                     let verificationFlow =
                       flow?.type === "verification" ? flow : null;
-
                     if (!verificationFlow) {
                       const { data } = await axios.get(
                         `${KRATOS_PUBLIC}/self-service/verification/browser`,
@@ -343,31 +292,24 @@ function App() {
                       verificationFlow = data;
                       setFlow(data);
                     }
-
-                    const csrfToken = getCsrfToken(verificationFlow);
-
                     await axios.post(
                       `${KRATOS_PUBLIC}/self-service/verification?flow=${verificationFlow.id}`,
                       {
                         method: "code",
-                        csrf_token: csrfToken,
-                        code: code,
+                        csrf_token: getCsrfToken(verificationFlow),
+                        code,
                       },
                       {
                         withCredentials: true,
                         headers: {
-                          "Content-Type": "application/json",
-                          "X-CSRF-Token": csrfToken,
+                          "X-CSRF-Token": getCsrfToken(verificationFlow),
                         },
                       }
                     );
-
                     await checkSession();
                     navigate("/dashboard");
                   } catch (error) {
-                    if (error.response?.data) {
-                      setFlow(error.response.data);
-                    }
+                    if (error.response?.data) setFlow(error.response.data);
                   }
                 }}
               >
@@ -380,58 +322,31 @@ function App() {
                   placeholder="000000"
                   required
                   autoFocus
-                  style={{
-                    width: "100%",
-                    padding: "1.2rem",
-                    fontSize: "2rem",
-                    textAlign: "center",
-                    letterSpacing: "0.8rem",
-                    fontWeight: "bold",
-                    border: "2px solid #e2e8f0",
-                    borderRadius: "12px",
-                    marginBottom: "1.5rem",
-                    fontFamily: "monospace",
-                  }}
-                  onInput={e => {
-                    e.target.value = e.target.value
+                  onInput={e =>
+                    (e.target.value = e.target.value
                       .replace(/\D/g, "")
-                      .slice(0, 6);
-                  }}
+                      .slice(0, 6))
+                  }
                 />
-
-                <button
-                  type="submit"
-                  style={{ background: "#10b981", color: "white" }}
-                >
-                  Подтвердить
-                </button>
+                <button type="submit">Подтвердить</button>
               </form>
-
-              <p
-                style={{
-                  marginTop: "1.5rem",
-                  fontSize: "0.95rem",
-                  color: "#64748b",
-                }}
-              >
+              <p style={{ marginTop: "1.5rem", fontSize: "0.95rem" }}>
                 Не пришёл код?{" "}
                 <a
                   href="#"
                   onClick={async e => {
                     e.preventDefault();
                     try {
-                      const { data } = await axios.post(
+                      await axios.post(
                         `${KRATOS_PUBLIC}/self-service/verification/api`,
                         { method: "code" },
                         { withCredentials: true }
                       );
-                      setFlow(data);
                       alert("Новый код отправлен!");
                     } catch {
-                      alert("Не удалось отправить код");
+                      alert("Ошибка");
                     }
                   }}
-                  style={{ color: "#3b82f6" }}
                 >
                   Отправить ещё раз
                 </a>
@@ -440,7 +355,7 @@ function App() {
           }
         />
 
-        {/* Защищённый дашборд */}
+        {/* ДАШБОРД */}
         <Route
           path="/dashboard"
           element={
@@ -456,7 +371,6 @@ function App() {
           }
         />
 
-        {/* Другие роуты (settings, error, recovery и т.д.) можно добавить аналогично */}
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </div>
